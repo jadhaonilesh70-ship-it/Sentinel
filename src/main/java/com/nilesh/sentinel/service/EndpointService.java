@@ -9,6 +9,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.CacheEvict;
 
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -30,8 +32,9 @@ public class EndpointService {
         this.pingService = pingService;
     }
 
+    // Evict the cache whenever a new endpoint is added so the next GET fetches fresh DB data
+    @CacheEvict(value = "endpoints", allEntries = true)
     public MonitoredEndpoint addEndpoint(String name, String url) {
-        // Audit Fix: Basic Input Validation
         try {
             new URL(url);
         } catch (MalformedURLException e) {
@@ -42,14 +45,19 @@ public class EndpointService {
         return endpointRepository.save(new MonitoredEndpoint(name, url));
     }
 
+    // Cache this highly accessed list to avoid hitting the DB unnecessarily
+    @Cacheable(value = "endpoints")
     public List<MonitoredEndpoint> getAllEndpoints() {
+        log.info("Fetching endpoints from Database (Cache miss)");
         return endpointRepository.findAll();
     }
 
     @Scheduled(fixedRate = 60000)
     public void monitorEndpoints() {
         List<MonitoredEndpoint> endpoints = endpointRepository.findByActiveTrue();
-        log.info("Running scheduled monitor for {} active endpoints", endpoints.size());
+        if(!endpoints.isEmpty()) {
+            log.info("Running scheduled monitor for {} active endpoints", endpoints.size());
+        }
         
         for (MonitoredEndpoint endpoint : endpoints) {
             PingResult result = pingService.executePing(endpoint);
