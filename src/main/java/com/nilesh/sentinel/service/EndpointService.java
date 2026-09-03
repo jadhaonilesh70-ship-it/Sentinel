@@ -5,18 +5,23 @@ import com.nilesh.sentinel.domain.PingResult;
 import com.nilesh.sentinel.domain.PingResultEntity;
 import com.nilesh.sentinel.repository.MonitoredEndpointRepository;
 import com.nilesh.sentinel.repository.PingResultRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.List;
 
 @Service
 public class EndpointService {
+    private static final Logger log = LoggerFactory.getLogger(EndpointService.class);
+
     private final MonitoredEndpointRepository endpointRepository;
     private final PingResultRepository pingResultRepository;
     private final HttpPingService pingService;
 
-    // Constructor Injection (Best Practice for Dependency Injection)
     public EndpointService(MonitoredEndpointRepository endpointRepository, 
                            PingResultRepository pingResultRepository, 
                            HttpPingService pingService) {
@@ -26,6 +31,14 @@ public class EndpointService {
     }
 
     public MonitoredEndpoint addEndpoint(String name, String url) {
+        // Audit Fix: Basic Input Validation
+        try {
+            new URL(url);
+        } catch (MalformedURLException e) {
+            throw new IllegalArgumentException("Invalid URL format");
+        }
+        
+        log.info("Adding new endpoint: {} [{}]", name, url);
         return endpointRepository.save(new MonitoredEndpoint(name, url));
     }
 
@@ -33,16 +46,15 @@ public class EndpointService {
         return endpointRepository.findAll();
     }
 
-    /**
-     * Scheduled job that runs every 60 seconds.
-     * It finds all active endpoints, pings them, and saves the results to PostgreSQL.
-     */
     @Scheduled(fixedRate = 60000)
     public void monitorEndpoints() {
         List<MonitoredEndpoint> endpoints = endpointRepository.findByActiveTrue();
+        log.info("Running scheduled monitor for {} active endpoints", endpoints.size());
         
         for (MonitoredEndpoint endpoint : endpoints) {
             PingResult result = pingService.executePing(endpoint);
+            log.debug("Pinged {} - Status: {} - Latency: {}ms", endpoint.getUrl(), result.statusCode(), result.responseTimeMs());
+            
             PingResultEntity entity = new PingResultEntity(
                 result.endpointId(), 
                 result.timestamp(), 
