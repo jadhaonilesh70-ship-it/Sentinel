@@ -1,12 +1,21 @@
 package com.nilesh.sentinel.domain;
 
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import java.util.UUID;
 
+@Entity
+@Table(name = "monitored_endpoints")
 public class MonitoredEndpoint {
-    private final String id;
+    @Id
+    private String id;
     private String name;
     private String url;
     private boolean active;
+
+    // Default constructor required by JPA
+    protected MonitoredEndpoint() {}
 
     public MonitoredEndpoint(String name, String url) {
         this.id = UUID.randomUUID().toString();
